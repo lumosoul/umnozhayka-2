@@ -19,7 +19,7 @@ import { rewardsScreen } from './ui/screens/rewards.js';
 import { lessonsScreen } from './ui/screens/lessons.js';
 import { parentScreen } from './ui/screens/parent.js';
 
-export const APP_VERSION = '1.0.3';
+export const APP_VERSION = '1.0.4';
 
 const SCREENS = {
   profiles: profilesScreen,
@@ -192,8 +192,12 @@ async function start() {
 
 registerServiceWorker();
 start().catch((err) => {
+  // Если как раз пришла новая версия (возможно, с исправлением), перезапускаемся сами.
+  navigator.serviceWorker?.addEventListener('controllerchange', () => location.reload());
+  // Кнопка нужна и потому, что у приложения на экране «Домой» нет кнопки обновления браузера.
   root.replaceChildren(h('div', { class: 'splash' },
-    owlSays('Ой! Не получилось запуститься. Обнови страницу.', { center: true }),
+    owlSays('Ой! Не получилось запуститься.', { center: true }),
+    h('button', { type: 'button', class: 'btn btn--primary', onClick: () => location.reload() }, 'Попробовать ещё раз'),
     h('p', { class: 'muted small' }, String(err?.message ?? err))));
 });
 

@@ -62,6 +62,18 @@ addEventListener('error', (e) => __e2eErrors.push(String(e.message || e.error)))
 addEventListener('unhandledrejection', (e) => __e2eErrors.push('promise: ' + String(e.reason?.message || e.reason)));
 """
 
+# Кэш, который на iPhone оставила версия 1.0.2, и чужой кэш с файлом по нашему адресу.
+LEGACY_CACHES = """
+  const html = (text) => new Response('<!doctype html><meta charset="utf-8"><p id="old-version">' + text + '</p>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  const js = (text) => new Response('document.body.textContent = ' + JSON.stringify(text), { headers: { 'Content-Type': 'text/javascript' } });
+  const at = (path) => new URL(path, location).href;
+  const legacy = await caches.open('umnozhayka-1.0.2');
+  await legacy.put(at('./'), html('Ой! Не получилось запуститься.'));
+  await legacy.put(at('./index.html'), html('Ой! Не получилось запуститься.'));
+  await legacy.put(at('./js/main.js'), js('старая версия'));
+  await (await caches.open('другое-приложение')).put(at('./js/main.js'), js('чужой файл'));
+"""
+
 KEYVALS = {
     'Enter': Gdk.KEY_Return,
     'Escape': Gdk.KEY_Escape,
@@ -184,6 +196,7 @@ class Device:
         self.files_to_choose = []
         self.errors = []
         self.load_finished = False
+        self.loads = 0
         manager = WebKit2.WebsiteDataManager(base_data_directory=str(base / 'data'),
                                              base_cache_directory=str(base / 'cache'))
         self.context = WebKit2.WebContext(website_data_manager=manager)
@@ -216,6 +229,7 @@ class Device:
     def _on_load(self, _view, event):
         if event == WebKit2.LoadEvent.FINISHED:
             self.load_finished = True
+            self.loads += 1
 
     def open(self, url, ready='globalThis.umnozhayka?.currentName', timeout=15.0):
         self.load_finished = False
@@ -684,6 +698,32 @@ def main():
         n.close()
         return 'приложение запустилось рядом с чужой базой «umnozhayka», база и кэш соседа целы'
     step('Соседнее приложение на том же домене не мешает (ошибка с iPhone)', neighbour)
+
+    def legacy_upgrade():
+        # Так было на iPhone: кэш «umnozhayka-1.0.2» создан раньше нового, и поиск по всем кэшам
+        # домена (caches.match) находил старые файлы раньше новых.
+        d = Device('device-legacy')
+        devices.append(d)
+        d.load_finished = False
+        d.view.load_uri(url + 'manifest.webmanifest')
+        pump(until=lambda: d.load_finished, what='страница того же домена')
+        d.js(LEGACY_CACHES)
+        loads = d.loads
+        d.view.load_uri(url)
+        # Первая загрузка, затем новый service worker удаляет кэш 1.0.2 и сам перезагружает страницу.
+        pump(until=lambda: d.loads >= loads + 2, timeout=40, what='перезагрузка страницы новым service worker')
+        d.wait("globalThis.umnozhayka?.currentName === 'newProfile' && !!navigator.serviceWorker.controller")
+        check(not d.ev("caches.has('umnozhayka-1.0.2')"), 'кэш версии 1.0.2 не удалён')
+        check(d.ev("caches.has('другое-приложение')"), 'чужой кэш удалён')
+        server.offline = True
+        try:
+            d.reload()
+            version = d.ev('umnozhayka.version')
+        finally:
+            server.offline = False
+        d.close()
+        return f'кэш 1.0.2 удалён, страница перезагрузилась сама; без сети открылась версия {version}'
+    step('Обновление с версии 1.0.2: её кэш не подменяет новые файлы, страница перезагружается сама', legacy_upgrade)
 
     state['source'] = profiles_json(a)
 

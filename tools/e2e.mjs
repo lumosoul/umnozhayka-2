@@ -389,6 +389,39 @@ async function main() {
       return `приложение запустилось; база и кэш соседа целы; стёртый кэш докачался (${full} файлов)`;
     });
 
+    await step('Обновление с версии 1.0.2: её кэш не подменяет новые файлы, страница перезагружается сама', async () => {
+      // Так было на iPhone: кэш «umnozhayka-1.0.2» создан раньше нового, и поиск по всем кэшам
+      // домена (caches.match) находил старые файлы раньше новых.
+      const b = await browser.newPage({ context: true });
+      await b.goto(`${url}manifest.webmanifest`);
+      await b.eval(`(async () => {
+        const html = (text) => new Response('<!doctype html><meta charset="utf-8"><p id="old-version">' + text + '</p>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        const js = (text) => new Response('document.body.textContent = ' + JSON.stringify(text), { headers: { 'Content-Type': 'text/javascript' } });
+        const at = (path) => new URL(path, location).href;
+        const legacy = await caches.open('umnozhayka-1.0.2');
+        await legacy.put(at('./'), html('Ой! Не получилось запуститься.'));
+        await legacy.put(at('./index.html'), html('Ой! Не получилось запуститься.'));
+        await legacy.put(at('./js/main.js'), js('старая версия'));
+        // Чужой кэш с файлом по нашему адресу: из него приложение тоже ничего не берёт.
+        await (await caches.open('другое-приложение')).put(at('./js/main.js'), js('чужой файл'));
+        return true;
+      })()`);
+      let loads = 0;
+      const reloaded = b.waitEvent('Page.loadEventFired', 40000, () => ++loads === 2);
+      await b.goto(url);
+      await reloaded; // новый service worker удалил кэш 1.0.2 и сам перезагрузил страницу
+      await b.waitFor(`globalThis.umnozhayka?.currentName === 'newProfile' && !!navigator.serviceWorker.controller`, 15000);
+      check(!(await b.eval(`caches.has('umnozhayka-1.0.2')`)), 'кэш версии 1.0.2 не удалён');
+      check(await b.eval(`caches.has('другое-приложение')`), 'чужой кэш удалён');
+      await b.offline(true);
+      await b.reload();
+      await b.waitFor(`globalThis.umnozhayka?.currentName === 'newProfile'`, 15000);
+      const version = await b.eval('umnozhayka.version');
+      await b.offline(false);
+      await b.close();
+      return `кэш 1.0.2 удалён, страница перезагрузилась сама; без сети открывается версия ${version}`;
+    });
+
     await step('Данные версии 1.0.2 (база «umnozhayka») переносятся, старая база освобождается', async () => {
       const b = await browser.newPage({ context: true });
       await b.goto(`${url}manifest.webmanifest`);
