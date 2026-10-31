@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Умножайка — проверка устройства</title>
+  <meta name="theme-color" content="#FFF8EE">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>
+    // Если браузер слишком старый и модуль проверки не запустился, говорим об этом прямо.
+    window.addEventListener('error', function (e) { window.__selftestError = e && e.message; });
+    setTimeout(function () {
+      if (window.__selftestStarted) return;
+      document.getElementById('summary').textContent = 'Проверка не запустилась: этот браузер не поддерживает современный JavaScript, '
+        + 'нужный «Умножайке» (Safari 16.4+, Chrome, Edge и Firefox последних версий).'
+        + (window.__selftestError ? ' Ошибка: ' + window.__selftestError : '');
+    }, 8000);
+  </script>
+  <script type="module" src="js/selftest.js"></script>
+</head>
+<body>
+  <div class="app">
+    <main class="screen screen--narrow">
+      <header class="topbar">
+        <a class="btn btn--ghost btn--icon" href="./" aria-label="В приложение" title="В приложение">←</a>
+        <h1 class="topbar__title">Проверка устройства</h1>
+      </header>
+      <p class="card" style="margin: 0">Страница проверяет прямо в этом браузере всё, на чём держится «Умножайка». Данные детей не меняются.</p>
+      <p id="summary" class="notice" role="status" style="margin: 0">Проверяю…</p>
+      <ol id="checks" class="selftest"></ol>
+      <section class="card section">
+        <h2 style="margin: 0">Проверки с вашим участием</h2>
+        <p class="muted small" style="margin: 0">Звук, речь и камеру браузер разрешает только после нажатия.</p>
+        <div id="manual" class="btn-row"></div>
+        <div id="preview"></div>
+      </section>
+      <section class="card section">
+        <h2 style="margin: 0">Режим полёта</h2>
+        <ol style="margin: 0; padding-left: 1.25em">
+          <li>Дождитесь строки «Service worker — работа без интернета» с отметкой ✓.</li>
+          <li>Включите режим полёта, закройте страницу и откройте её (или само приложение) снова.</li>
+          <li>Все автоматические проверки должны пройти и без интернета.</li>
+        </ol>
+      </section>
+      <div class="btn-row">
+        <button type="button" id="copy" class="btn btn--primary">📋 Скопировать отчёт</button>
+        <a class="btn btn--secondary" href="./">В приложение</a>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

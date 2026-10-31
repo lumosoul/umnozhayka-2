@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "Умножайка — таблица умножения",
+  "short_name": "Умножайка",
+  "description": "Тренажёр таблицы умножения для детей 7–10 лет: диагностика, интервальное повторение и совёнок-помощник. Работает без интернета.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFF8EE",
+  "theme_color": "#FFF8EE",
+  "categories": ["education", "kids"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
