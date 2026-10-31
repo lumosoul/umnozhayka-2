@@ -1,6 +1,6 @@
 {
   "name": "umnozhayka",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Умножайка — PWA-тренажёр таблицы умножения для детей 7–10 лет",
   "type": "module",

@@ -622,8 +622,8 @@ def main():
 
     def offline():
         a.wait('!!navigator.serviceWorker.controller', 20)
-        a.wait("caches.keys().then((k) => k.some((x) => x.startsWith('umnozhayka-')))", 20)
-        cached = a.js("const k = await caches.keys(); return (await (await caches.open(k.find((x) => x.startsWith('umnozhayka-')))).keys()).length;")
+        a.wait("caches.keys().then((k) => k.some((x) => x.startsWith('umnozhayka@')))", 20)
+        cached = a.js("const k = await caches.keys(); return (await (await caches.open(k.find((x) => x.startsWith('umnozhayka@')))).keys()).length;")
         server.offline = True
         hits = server.hits
         try:
@@ -659,6 +659,31 @@ def main():
         check(info['apple'] == '180x180', f"apple-touch-icon: {info['apple']}")
         return f"display {info['display']}, иконки {', '.join(i['real'] + ' ' + i['purpose'] for i in info['icons'])}, apple-touch-icon {info['apple']}"
     step('Установка на экран «Домой»: манифест и иконки читаются в WebKit', install)
+
+    def neighbour():
+        # На GitHub Pages все проекты аккаунта делят домен, а с ним IndexedDB и Cache Storage.
+        # Так на iPhone и случилась ошибка «One of the specified object stores was not found».
+        n = Device('device-neighbour')
+        devices.append(n)
+        n.load_finished = False
+        n.view.load_uri(url + 'manifest.webmanifest')  # страница того же домена, но не приложение
+        pump(until=lambda: n.load_finished, what='страница соседа')
+        n.js("""
+          await new Promise((resolve, reject) => {
+            const req = indexedDB.open('umnozhayka', 1);
+            req.onupgradeneeded = () => { for (const s of ['profiles', 'facts', 'sessions', 'meta']) req.result.createObjectStore(s, { keyPath: 'id' }); };
+            req.onsuccess = () => { req.result.close(); resolve(); };
+            req.onerror = () => reject(req.error);
+          });
+          await (await caches.open('umnozhayka-v1')).put('/neighbour', new Response('x'));""")
+        n.open(url, ready="umnozhayka.currentName === 'newProfile' && umnozhayka.persistent")
+        stores = n.js("""
+          return await new Promise((resolve) => { const q = indexedDB.open('umnozhayka'); q.onsuccess = () => { const s = [...q.result.objectStoreNames].sort(); q.result.close(); resolve(s.join()); }; });""")
+        check(stores == 'facts,meta,profiles,sessions', f'база соседа изменилась: {stores}')
+        check(n.ev("caches.has('umnozhayka-v1')"), 'кэш соседа удалён')
+        n.close()
+        return 'приложение запустилось рядом с чужой базой «umnozhayka», база и кэш соседа целы'
+    step('Соседнее приложение на том же домене не мешает (ошибка с iPhone)', neighbour)
 
     state['source'] = profiles_json(a)
 

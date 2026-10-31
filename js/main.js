@@ -19,7 +19,7 @@ import { rewardsScreen } from './ui/screens/rewards.js';
 import { lessonsScreen } from './ui/screens/lessons.js';
 import { parentScreen } from './ui/screens/parent.js';
 
-export const APP_VERSION = '1.0.2';
+export const APP_VERSION = '1.0.3';
 
 const SCREENS = {
   profiles: profilesScreen,

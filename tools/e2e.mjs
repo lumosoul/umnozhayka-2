@@ -333,8 +333,8 @@ async function main() {
 
     await step('Работает в режиме полёта после первой загрузки', async () => {
       await page.waitFor('!!navigator.serviceWorker.controller', 15000);
-      await page.waitFor(`caches.keys().then((k) => k.some((x) => x.startsWith('umnozhayka-')))`, 15000);
-      const cached = await page.eval(`caches.keys().then(async (k) => (await (await caches.open(k[0])).keys()).length)`);
+      await page.waitFor(`caches.keys().then((k) => k.some((x) => x.startsWith('umnozhayka@')))`, 15000);
+      const cached = await page.eval(`caches.keys().then(async (k) => (await (await caches.open(k.find((x) => x.startsWith('umnozhayka@')))).keys()).length)`);
       const before = requests.length;
       await page.offline(true);
       await page.reload();
@@ -358,6 +358,65 @@ async function main() {
       check(!errors?.length, `ошибки манифеста: ${JSON.stringify(errors)}`);
       check(!inst.installabilityErrors?.length, `не устанавливается: ${JSON.stringify(inst.installabilityErrors)}`);
       return 'браузер считает приложение устанавливаемым';
+    });
+
+    await step('Соседнее приложение на том же домене (база «umnozhayka», кэш «umnozhayka-v1») не мешает', async () => {
+      // На GitHub Pages все проекты аккаунта делят домен, а с ним IndexedDB и Cache Storage.
+      const b = await browser.newPage({ context: true });
+      await b.goto(`${url}manifest.webmanifest`); // страница того же домена, но не приложение
+      await b.eval(`new Promise((resolve, reject) => {
+        const req = indexedDB.open('umnozhayka', 1);
+        req.onupgradeneeded = () => { for (const s of ['profiles', 'facts', 'sessions', 'meta']) req.result.createObjectStore(s, { keyPath: 'id' }); };
+        req.onsuccess = () => { req.result.close(); resolve(); };
+        req.onerror = () => reject(req.error);
+      }).then(() => caches.open('umnozhayka-v1')).then((c) => c.put('/neighbour', new Response('x'))).then(() => true)`);
+      await b.goto(url);
+      await b.waitFor(`umnozhayka.currentName === 'newProfile' && umnozhayka.persistent`, 15000);
+      await b.waitFor(`navigator.serviceWorker.controller && caches.keys().then((k) => k.some((x) => x.startsWith('umnozhayka@')))`, 20000);
+      const ours = `caches.keys().then(async (k) => { const n = k.find((x) => x.startsWith('umnozhayka@')); return n ? (await (await caches.open(n)).keys()).length : 0; })`;
+      const full = await b.eval(ours);
+      // Сосед обновился и удалил «свои» старые кэши по префиксу «umnozhayka-» — нашего это не касается.
+      await b.eval(`caches.keys().then((k) => Promise.all(k.filter((x) => x.startsWith('umnozhayka-') && x !== 'umnozhayka-v1').map((x) => caches.delete(x)))).then(() => true)`);
+      check(await b.eval(ours) === full, 'наш кэш пострадал от чистки соседа');
+      // А если сосед всё-таки стёр наш кэш, при следующем открытии с сетью он докачивается сам.
+      await b.eval(`caches.keys().then((k) => Promise.all(k.filter((x) => x.startsWith('umnozhayka@')).map((x) => caches.delete(x)))).then(() => true)`);
+      await b.reload();
+      await b.waitFor(`${ours}.then((n) => n >= ${full})`, 30000);
+      const neighbour = await b.eval(`new Promise((resolve) => { const q = indexedDB.open('umnozhayka'); q.onsuccess = () => { const s = [...q.result.objectStoreNames].sort(); q.result.close(); resolve(s.join()); }; })`);
+      check(neighbour === 'facts,meta,profiles,sessions', `база соседа изменилась: ${neighbour}`);
+      check(await b.eval(`caches.has('umnozhayka-v1')`), 'кэш соседа удалён');
+      await b.close();
+      return `приложение запустилось; база и кэш соседа целы; стёртый кэш докачался (${full} файлов)`;
+    });
+
+    await step('Данные версии 1.0.2 (база «umnozhayka») переносятся, старая база освобождается', async () => {
+      const b = await browser.newPage({ context: true });
+      await b.goto(`${url}manifest.webmanifest`);
+      const id = await b.eval(`(async () => {
+        const { createProfile } = await import('${url}js/core/profile.js');
+        const p = createProfile({ name: 'Старый', avatar: 'frog' });
+        await new Promise((resolve, reject) => {
+          const req = indexedDB.open('umnozhayka', 1);
+          req.onupgradeneeded = () => {
+            req.result.createObjectStore('profiles', { keyPath: 'id' });
+            req.result.createObjectStore('settings', { keyPath: 'key' });
+          };
+          req.onsuccess = () => {
+            const tx = req.result.transaction(['profiles', 'settings'], 'readwrite');
+            tx.objectStore('profiles').put(p);
+            tx.objectStore('settings').put({ key: 'app', sound: false, activeProfileId: p.id, qrSpeed: 700 });
+            tx.oncomplete = () => { req.result.close(); resolve(); };
+            tx.onerror = () => reject(tx.error);
+          };
+          req.onerror = () => reject(req.error);
+        });
+        return p.id;
+      })()`);
+      await b.goto(url);
+      await b.waitFor(`umnozhayka.profile?.id === ${JSON.stringify(id)} && umnozhayka.settings.sound === false`, 15000);
+      await b.waitFor(`indexedDB.databases().then((d) => !d.some((x) => x.name === 'umnozhayka'))`, 10000);
+      await b.close();
+      return 'профиль и настройки перенесены, база «umnozhayka» удалена';
     });
 
     state.source = await profilesJson(page);

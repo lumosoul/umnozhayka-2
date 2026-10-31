@@ -131,7 +131,7 @@ def main():
             if not has_sw:
                 return 'в этой сборке нет service worker — пропущено'
             page.evaluate('navigator.serviceWorker.ready.then(() => true)')
-            wait("caches.keys().then((k) => k.some((x) => x.startsWith('umnozhayka-')))", 20000)
+            wait("caches.keys().then((k) => k.some((x) => x.startsWith('umnozhayka@')))", 20000)
             if not page.evaluate('!!navigator.serviceWorker.controller'):
                 page.reload()
                 wait('!!navigator.serviceWorker.controller', 15000)

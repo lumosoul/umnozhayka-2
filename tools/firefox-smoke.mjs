@@ -140,8 +140,8 @@ async function main() {
     await step('Firefox: service worker кэширует файлы', async () => {
       await waitFor(`navigator.serviceWorker && navigator.serviceWorker.controller !== undefined`);
       await evaluate(`navigator.serviceWorker.ready.then(() => true)`);
-      await waitFor(`caches.keys().then((k) => k.some((x) => x.startsWith('umnozhayka-')))`, 15000).catch(() => {});
-      const files = await evaluate(`caches.keys().then(async (k) => { const c = k.find((x) => x.startsWith('umnozhayka-')); return c ? (await (await caches.open(c)).keys()).length : 0; })`);
+      await waitFor(`caches.keys().then((k) => k.some((x) => x.startsWith('umnozhayka@')))`, 15000).catch(() => {});
+      const files = await evaluate(`caches.keys().then(async (k) => { const c = k.find((x) => x.startsWith('umnozhayka@')); return c ? (await (await caches.open(c)).keys()).length : 0; })`);
       if (!files) throw new Error('кэш пуст');
       return `в кэше ${files} файлов`;
     });

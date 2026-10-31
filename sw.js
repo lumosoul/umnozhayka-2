@@ -1,8 +1,12 @@
 // Service worker: при первом открытии кэширует все файлы приложения, дальше отдаёт их из кэша —
 // поэтому «Умножайка» работает в режиме полёта. При выпуске новой версии меняйте VERSION.
+//
+// Все проекты GitHub Pages одного аккаунта живут на одном домене и делят Cache Storage,
+// поэтому имя кэша включает адрес приложения, а удаляем мы только свои старые кэши.
 
-const VERSION = '1.0.2';
-const CACHE = `umnozhayka-${VERSION}`;
+const VERSION = '1.0.3';
+const PREFIX = `umnozhayka@${new URL(self.registration.scope).pathname}#`;
+const CACHE = `${PREFIX}${VERSION}`;
 
 const ASSETS = [
   './',
@@ -62,19 +66,26 @@ const ASSETS = [
   './js/ui/screens/summary.js',
 ];
 
+async function precache() {
+  const cache = await caches.open(CACHE);
+  // cache: 'reload' — мимо HTTP-кэша, чтобы новая версия не смешалась со старыми файлами
+  await cache.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' })));
+}
+
+/** Соседнее приложение на том же домене может стереть наш кэш — тогда тихо скачиваем его заново. */
+async function ensurePrecached() {
+  const cache = await caches.open(CACHE);
+  if ((await cache.keys()).length < ASSETS.length) await precache();
+}
+
 self.addEventListener('install', (event) => {
-  event.waitUntil((async () => {
-    const cache = await caches.open(CACHE);
-    // cache: 'reload' — мимо HTTP-кэша, чтобы новая версия не смешалась со старыми файлами
-    await cache.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' })));
-    await self.skipWaiting();
-  })());
+  event.waitUntil(precache().then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k.startsWith('umnozhayka-') && k !== CACHE).map((k) => caches.delete(k)));
+    await Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE).map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -92,6 +103,7 @@ self.addEventListener('fetch', (event) => {
         ?? await caches.match('./index.html', { ignoreSearch: true });
       return cached ?? fetch(request);
     })());
+    event.waitUntil(ensurePrecached().catch(() => {}));
     return;
   }
 

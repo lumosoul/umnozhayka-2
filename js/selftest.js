@@ -1,10 +1,11 @@
 // Самопроверка устройства (selftest.html): прямо в этом браузере проверяет всё, на чём держится
 // «Умножайка», — модули, логику занятий, IndexedDB, service worker и кэш, воркер с распознаванием QR,
-// перенос данных, установку, звук, озвучку и камеру. Данные детей не трогает: IndexedDB
-// проверяется на отдельной временной базе, которая потом удаляется.
+// перенос данных, установку, звук, озвучку и камеру. Данные детей не трогает: запись в IndexedDB
+// проверяется на отдельной временной базе, а базу приложения страница только открывает и читает.
 
 import { h } from './ui/dom.js';
 import { voice } from './ui/audio.js';
+import { DB_NAME, storage } from './storage/db.js';
 import { createProfile, normalizeProfile } from './core/profile.js';
 import { LessonRunner, planLesson } from './core/session.js';
 import { scheduleAfterAnswer } from './core/leitner.js';
@@ -20,7 +21,9 @@ window.__selftestStarted = true;
 
 const MARKS = { ok: '✓', warn: '!', fail: '✗', info: 'i', wait: '…' };
 const WORDS = { ok: 'работает', warn: 'есть замечание', fail: 'не работает', info: 'сведения', wait: 'проверяется' };
-const TEST_DB = 'umnozhayka-selftest';
+const TEST_DB = `umnozhayka-selftest@${new URL('../', import.meta.url).pathname}`;
+/** Так service worker называет кэш этого приложения (адрес приложения в имени — см. sw.js). */
+const CACHE_PREFIX = `umnozhayka@${new URL('../', import.meta.url).pathname}#`;
 /** Без этих файлов в кэше приложение не откроется в режиме полёта. */
 const CRITICAL = ['./', './index.html', './selftest.html', './manifest.webmanifest', './css/styles.css',
   './js/main.js', './js/selftest.js', './js/transfer/qr-worker.js'];
@@ -225,6 +228,24 @@ async function checkIndexedDb() {
   return { detail: `профиль (${kb} КБ) записан, прочитан заново и совпал; временная база удалена` };
 }
 
+async function checkAppDb() {
+  if (!(await storage.init())) {
+    return { status: 'fail', detail: 'база приложения не открылась — прогресс проживёт только до закрытия вкладки' };
+  }
+  await storage.loadSettings();
+  const profiles = await storage.loadProfiles();
+  return { detail: `«${DB_NAME}» открывается, профилей: ${profiles.length}` };
+}
+
+/** Другие приложения на том же домене (на GitHub Pages он общий для всех проектов аккаунта). */
+async function neighbours() {
+  const dbs = ((await indexedDB.databases?.().catch(() => null)) ?? [])
+    .map((d) => d.name)
+    .filter((name) => name !== DB_NAME && name !== TEST_DB);
+  const other = globalThis.caches ? (await caches.keys()).filter((k) => !k.startsWith(CACHE_PREFIX)) : [];
+  return [...dbs, ...other];
+}
+
 async function checkPersistence() {
   if (isIOS && standalone) return { detail: 'приложение на экране «Домой» — Safari не удаляет его данные' };
   const persisted = await navigator.storage?.persisted?.().catch(() => null);
@@ -245,7 +266,7 @@ async function checkServiceWorker() {
   await navigator.serviceWorker.register('./sw.js');
   await timeout(navigator.serviceWorker.ready, 20000, 'service worker');
   const cache = await waitFor(async () => {
-    const name = (await caches.keys()).filter((k) => k.startsWith('umnozhayka-')).at(-1);
+    const name = (await caches.keys()).filter((k) => k.startsWith(CACHE_PREFIX)).at(-1);
     if (!name) return null;
     const store = await caches.open(name);
     const count = (await store.keys()).length;
@@ -494,6 +515,7 @@ async function main() {
   await check('Современный JavaScript и ES-модули', checkJavaScript);
   await check('Логика занятий: Лейтнер, план урока, возврат ошибки', checkLogic);
   await check('IndexedDB — хранение прогресса', checkIndexedDb);
+  await check('База приложения', checkAppDb);
   await check('Защита данных от очистки браузером', checkPersistence);
   await check('Service worker — работа без интернета', checkServiceWorker);
   await check('Воркер и распознавание QR', checkQrWorker);
@@ -502,6 +524,11 @@ async function main() {
   await check('Звук (Web Audio)', checkAudio);
   await check('Чтение вслух по-русски', checkSpeech);
   await check('Камера для сканирования QR', checkCamera);
+  const others = await neighbours().catch(() => []);
+  if (others.length) {
+    addItem('Другие приложения на этом домене', { counted: false })
+      .set('info', `хранят свои данные отдельно и «Умножайке» не мешают: ${others.join(', ')}`);
+  }
 
   const soundItem = addItem('Звук — проверка на слух', { counted: false });
   soundItem.set('info', 'нажмите «🔊 Проверить звук»: прозвучат две мягкие ноты');
